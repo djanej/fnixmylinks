@@ -1,113 +1,78 @@
-// Robust, privacy-friendly view counter for static hosting (GitHub Pages)
-// Strategy:
-// - Uses CountAPI (HTTPS) to store a global counter per host+path
-// - Increments only once per visitor per day (localStorage throttle)
-// - Falls back to GET (no increment) if already counted today
-// - Initializes missing keys, caches last known value locally
-// - If all network calls fail (adblock/offline), shows cached or existing value
-
-(function() {
-    document.addEventListener('DOMContentLoaded', async () => {
-        const viewEl = document.getElementById('view-count');
-        if (!viewEl) return;
-
-        // Build namespace/key from current location to avoid collisions
-        const sanitize = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
-        const host = sanitize(window.location.hostname || 'localhost');
-        const path = sanitize(window.location.pathname || 'root');
-        const namespace = `views_${host}`;
-        const key = `page_${path}`;
-
-        const LS_PREFIX = `vc_${namespace}_${key}`;
-        const LS_LAST_DAY = `${LS_PREFIX}_last_day`;
-        const LS_CACHED = `${LS_PREFIX}_cached`;
-
-        // Show cached count immediately if we have it
-        try {
-            const cached = localStorage.getItem(LS_CACHED);
-            if (cached && /^[0-9]+$/.test(cached)) {
-                viewEl.textContent = cached;
-            }
-        } catch (_) {}
-
-        const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-        let alreadyCountedToday = false;
-        try {
-            alreadyCountedToday = localStorage.getItem(LS_LAST_DAY) === today;
-        } catch (_) {}
-
-        const base = 'https://api.countapi.xyz';
-
-        async function fetchJSON(url, options) {
-            const res = await fetch(url, { cache: 'no-store', ...options });
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            return res.json();
-        }
-
-        async function ensureExists() {
-            // Try GET; if 404, create the key with value 0
-            try {
-                return await fetchJSON(`${base}/get/${namespace}/${key}`);
-            } catch (e) {
-                // Attempt create, then return created value
-                try {
-                    return await fetchJSON(`${base}/create?namespace=${encodeURIComponent(namespace)}&key=${encodeURIComponent(key)}&value=0`);
-                } catch (e2) {
-                    throw e2;
-                }
-            }
-        }
-
-        async function updateCounter() {
-            try {
-                await ensureExists();
-
-                // Decide endpoint based on whether we should increment today
-                const endpoint = alreadyCountedToday ? 'get' : 'hit';
-                const data = await fetchJSON(`${base}/${endpoint}/${namespace}/${key}`);
-                if (typeof data.value === 'number') {
-                    viewEl.textContent = data.value;
-                    try {
-                        localStorage.setItem(LS_CACHED, String(data.value));
-                        if (!alreadyCountedToday) localStorage.setItem(LS_LAST_DAY, today);
-                    } catch (_) {}
-                }
-            } catch (e) {
-                // Final fallback: leave existing/cached value in place
-                // Optionally, try one last GET without throwing
-                try {
-                    const data = await fetchJSON(`${base}/get/${namespace}/${key}`);
-                    if (typeof data.value === 'number') {
-                        viewEl.textContent = data.value;
-                        localStorage.setItem(LS_CACHED, String(data.value));
-                    }
-                } catch (_) {
-                    // Silent fallback
-                }
-            }
-        }
-
-        updateCounter();
-    });
-})();
-// Simple HTTPS view counter for GitHub Pages (CountAPI)
-// Increments a counter and displays it; if it fails, leaves the current value untouched.
+// Client-side daily-throttled view counter using Countty Worker
+// - Increments via GET to your Worker once per device/day
+// - Displays the badge image for the current value
+// - Retries increment with exponential backoff; always shows the badge regardless
 
 document.addEventListener('DOMContentLoaded', async () => {
     const viewEl = document.getElementById('view-count');
     if (!viewEl) return;
 
-    const namespace = 'fnix_xyz';
-    const key = 'homepage';
+    const HIT_URL = 'https://skye.anej-programer2.workers.dev/views?slug=fnix';
+    const BADGE_URL = 'https://skye.anej-programer2.workers.dev/badge?slug=fnix';
+    const BADGE_ID = 'view-badge';
+    const LS_VIEWED_AT = 'fnix_viewed_at';
+    const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+
+    function bustBadgeUrl() {
+        return BADGE_URL + (BADGE_URL.includes('?') ? '&' : '?') + '_=' + Date.now();
+    }
+
+    // Replace numeric span with a badge image for display (avoid duplicates)
     try {
-        const res = await fetch(`https://api.countapi.xyz/hit/${namespace}/${key}`);
-        if (!res.ok) throw new Error('count api failed');
-        const data = await res.json();
-        if (typeof data.value === 'number') {
-            viewEl.textContent = data.value;
+        const parent = viewEl.parentElement || document.querySelector('.views-container');
+        if (parent) {
+            let badgeImg = document.getElementById(BADGE_ID);
+            if (!badgeImg) {
+                badgeImg = document.createElement('img');
+                badgeImg.id = BADGE_ID;
+                badgeImg.alt = 'visitors';
+                badgeImg.decoding = 'async';
+                badgeImg.loading = 'lazy';
+                badgeImg.style.height = '16px';
+                badgeImg.style.verticalAlign = 'text-bottom';
+                viewEl.style.display = 'none';
+                parent.appendChild(badgeImg);
+            }
+            badgeImg.src = bustBadgeUrl();
         }
-    } catch (e) {
-        // fail silently; keep whatever is already shown
-        console.debug('View counter fallback:', e);
+    } catch (_) {}
+
+    function shouldIncrementToday() {
+        try {
+            const last = localStorage.getItem(LS_VIEWED_AT);
+            if (!last) return true;
+            const lastAt = Number(last);
+            if (!Number.isFinite(lastAt)) return true;
+            return Date.now() - lastAt >= ONE_DAY_MS;
+        } catch (_) {
+            return true;
+        }
+    }
+
+    function markIncrementedNow() {
+        try { localStorage.setItem(LS_VIEWED_AT, String(Date.now())); } catch (_) {}
+    }
+
+    async function tryIncrementWithBackoff() {
+        const delays = [0, 1000, 3000, 7000];
+        for (let i = 0; i < delays.length; i++) {
+            if (delays[i] > 0) await new Promise(r => setTimeout(r, delays[i]));
+            try {
+                const res = await fetch(HIT_URL, { method: 'GET', cache: 'no-store' });
+                if (res.ok) {
+                    markIncrementedNow();
+                    try {
+                        const badgeImg = document.getElementById(BADGE_ID);
+                        if (badgeImg) badgeImg.src = bustBadgeUrl();
+                    } catch (_) {}
+                    return true;
+                }
+            } catch (_) {}
+        }
+        return false;
+    }
+
+    if (shouldIncrementToday()) {
+        tryIncrementWithBackoff();
     }
 });
