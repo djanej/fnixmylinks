@@ -22,6 +22,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     } catch (_) {}
 
+    // Always increase locally so the UI updates even if the Worker fails
+    try {
+        const currentLocal = Number.parseInt(viewEl.textContent, 10) || 0;
+        const nextLocal = currentLocal + 1;
+        viewEl.textContent = String(nextLocal);
+        localStorage.setItem(LS_CACHED, String(nextLocal));
+    } catch (_) {}
+
     function shouldIncrementToday() {
         try {
             const last = localStorage.getItem(LS_VIEWED_AT);
@@ -35,7 +43,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function markIncrementedNow() {
-        try { localStorage.setItem(LS_VIEWED_AT, String(Date.now())); } catch (_) {}
+        // no-op: anti-spam disabled; we no longer track last increment time
     }
 
     function extractNumberFromText(text) {
@@ -57,16 +65,15 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const text = await res.text();
                 const value = extractNumberFromText(text);
                 if (typeof value === 'number' && Number.isFinite(value)) {
-                    viewEl.textContent = String(value);
-                    try { localStorage.setItem(LS_CACHED, String(value)); } catch (_) {}
+                    const currentShown = Number.parseInt(viewEl.textContent, 10) || 0;
+                    // Only override if server value is higher to avoid going backwards
+                    const finalVal = value > currentShown ? value : currentShown;
+                    viewEl.textContent = String(finalVal);
+                    try { localStorage.setItem(LS_CACHED, String(finalVal)); } catch (_) {}
                     markIncrementedNow();
                     return true;
                 }
-                // Fallback: no numeric returned, locally increment the displayed/cached value
-                const current = Number.parseInt(viewEl.textContent, 10) || Number.parseInt(localStorage.getItem(LS_CACHED) || '', 10) || 0;
-                const next = current + 1;
-                viewEl.textContent = String(next);
-                try { localStorage.setItem(LS_CACHED, String(next)); } catch (_) {}
+                // If no numeric comes back, we keep the local increment already shown
                 markIncrementedNow();
                 return true;
             } catch (_) {}
@@ -87,10 +94,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         } catch (_) {}
     }
 
-    if (shouldIncrementToday()) {
-        tryIncrementWithBackoff();
-    } else {
-        // Not incrementing today; try to refresh from badge if possible
-        tryUpdateFromBadge();
-    }
+    // Always increment on page load
+    tryIncrementWithBackoff();
 });
