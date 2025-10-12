@@ -37,16 +37,7 @@ document.addEventListener("DOMContentLoaded", () => {
         // Set initial volume
         audio.volume = volumeSlider.value / 100;
         
-        // Auto-play on first user interaction
-        const startAudio = () => {
-            if (!audioStarted) {
-                audio.play().catch(err => console.log("Audio play failed:", err));
-                audioStarted = true;
-            }
-        };
-        
-        document.body.addEventListener('click', startAudio, { once: true });
-        document.body.addEventListener('touchstart', startAudio, { once: true });
+        // Do not auto-play; start only via removeOverlay()
         
         // Update volume when slider changes
         volumeSlider.addEventListener("input", (e) => {

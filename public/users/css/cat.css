@@ -8,6 +8,12 @@
     src: url('../../src/fonts/miscfont.ttf');
 }
 
+@font-face {
+    font-family: 'Goth';
+    src: url('../../src/fonts/gothfont.ttf') format('truetype');
+    font-display: swap;
+}
+
 .highlight {
     color: #C18be0;
     text-shadow:
@@ -48,7 +54,7 @@
     color: #fff;
     cursor: pointer;
     border: transparent;
-    font-family: 'Light';
+    font-family: 'Goth', 'Light', sans-serif;
     font-size: 6vh;
     text-shadow:
     0 0 7px #fff,
