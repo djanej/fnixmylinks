@@ -4,8 +4,6 @@
 // - Retries increment with exponential backoff; always shows the badge regardless
 
 document.addEventListener('DOMContentLoaded', async () => {
-    const viewEl = document.getElementById('view-count');
-    if (!viewEl) return;
 
     const HIT_URL = 'https://skye.anej-programer2.workers.dev/views?slug=fnix';
     const BADGE_URL = 'https://skye.anej-programer2.workers.dev/badge?slug=fnix';
@@ -14,64 +12,62 @@ document.addEventListener('DOMContentLoaded', async () => {
     const LS_VIEWED_AT = 'fnix_viewed_at';
     const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
-	function bustBadgeUrl() {
-        return BADGE_URL + (BADGE_URL.includes('?') ? '&' : '?') + '_=' + Date.now();
+    function withCacheBust(url) {
+        try {
+            const u = new URL(url);
+            u.searchParams.set('_', String(Date.now()));
+            return u.toString();
+        } catch (_) {
+            const base = url || BADGE_URL;
+            return base + (base.includes('?') ? '&' : '?') + '_=' + Date.now();
+        }
     }
 
-	function getBadgeParent() {
-		return viewEl.parentElement || document.querySelector('.views-container');
+    function getBadgeParent() {
+		const img = document.getElementById(BADGE_ID);
+		const obj = document.getElementById(BADGE_OBJECT_ID);
+		return (img && img.parentElement) || (obj && obj.parentElement) || document.querySelector('.views-container');
 	}
 
 	function renderBadgeObject() {
 		try {
 			const parent = getBadgeParent();
 			if (!parent) return;
-			const existingImg = document.getElementById(BADGE_ID);
-			if (existingImg) existingImg.remove();
+            const existingImg = document.getElementById(BADGE_ID);
+            const existingSrc = existingImg && existingImg.getAttribute('src');
+            if (existingImg) existingImg.remove();
 			let obj = document.getElementById(BADGE_OBJECT_ID);
 			if (!obj) {
 				obj = document.createElement('object');
 				obj.id = BADGE_OBJECT_ID;
 				obj.type = 'image/svg+xml';
 				obj.style.height = '16px';
-				obj.style.verticalAlign = 'text-bottom';
-				viewEl.style.display = 'none';
+                obj.style.verticalAlign = 'text-bottom';
 				parent.appendChild(obj);
 			}
-			obj.data = BADGE_URL;
+            obj.data = existingSrc || BADGE_URL;
 		} catch (_) {}
 	}
 
 	function renderBadgeImage() {
 		try {
-			const parent = getBadgeParent();
-			if (!parent) return;
-			if (document.getElementById(BADGE_ID) || document.getElementById(BADGE_OBJECT_ID)) return;
-			const badgeImg = document.createElement('img');
-			badgeImg.id = BADGE_ID;
-			badgeImg.alt = 'visitors';
-			badgeImg.decoding = 'async';
-			badgeImg.loading = 'lazy';
-			badgeImg.style.height = '16px';
-			badgeImg.style.verticalAlign = 'text-bottom';
-			badgeImg.addEventListener('error', () => { renderBadgeObject(); });
-			viewEl.style.display = 'none';
-			parent.appendChild(badgeImg);
-			badgeImg.src = BADGE_URL; // no cache-bust initially, maximize compatibility
+            const badgeImg = document.getElementById(BADGE_ID);
+            if (!badgeImg) return;
+            badgeImg.addEventListener('error', () => { renderBadgeObject(); });
 		} catch (_) {}
 	}
 
 	function refreshBadge() {
-		try {
-			const img = document.getElementById(BADGE_ID);
-			if (img) { img.src = bustBadgeUrl(); return; }
-			const obj = document.getElementById(BADGE_OBJECT_ID);
-			if (obj) { obj.data = bustBadgeUrl(); }
-		} catch (_) {}
+        try {
+            const img = document.getElementById(BADGE_ID);
+            if (img) { img.src = withCacheBust(img.getAttribute('src') || BADGE_URL); return; }
+            const obj = document.getElementById(BADGE_OBJECT_ID);
+            if (obj) { obj.data = withCacheBust(obj.getAttribute('data') || BADGE_URL); }
+        } catch (_) {}
 	}
 
-	// Insert badge now
-	renderBadgeImage();
+// Wire up fallback on existing badge image (if present)
+renderBadgeImage();
 
     function shouldIncrementToday() {
         try {
