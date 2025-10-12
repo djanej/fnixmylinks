@@ -16,7 +16,6 @@ function removeOverlay() {
 
     overlay.style.opacity = '0';
     userpage.style.display = 'flex';
-    audio.volume = 0.3;
     audio.play();
 
     setTimeout(function() { 
@@ -36,6 +35,12 @@ document.addEventListener("DOMContentLoaded", () => {
     if (volumeSlider && audio && volumeIcon) {
         // Set initial volume
         audio.volume = volumeSlider.value / 100;
+        previousVolume = volumeSlider.value;
+        if (audio.volume === 0) {
+            volumeWaves.style.display = 'none';
+        } else {
+            volumeWaves.style.display = 'block';
+        }
         
         // Do not auto-play; start only via removeOverlay()
         
