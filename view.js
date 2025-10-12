@@ -9,33 +9,69 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const HIT_URL = 'https://skye.anej-programer2.workers.dev/views?slug=fnix';
     const BADGE_URL = 'https://skye.anej-programer2.workers.dev/badge?slug=fnix';
-    const BADGE_ID = 'view-badge';
+	const BADGE_ID = 'view-badge';
+	const BADGE_OBJECT_ID = 'view-badge-object';
     const LS_VIEWED_AT = 'fnix_viewed_at';
     const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
-    function bustBadgeUrl() {
+	function bustBadgeUrl() {
         return BADGE_URL + (BADGE_URL.includes('?') ? '&' : '?') + '_=' + Date.now();
     }
 
-    // Replace numeric span with a badge image for display (avoid duplicates)
-    try {
-        const parent = viewEl.parentElement || document.querySelector('.views-container');
-        if (parent) {
-            let badgeImg = document.getElementById(BADGE_ID);
-            if (!badgeImg) {
-                badgeImg = document.createElement('img');
-                badgeImg.id = BADGE_ID;
-                badgeImg.alt = 'visitors';
-                badgeImg.decoding = 'async';
-                badgeImg.loading = 'lazy';
-                badgeImg.style.height = '16px';
-                badgeImg.style.verticalAlign = 'text-bottom';
-                viewEl.style.display = 'none';
-                parent.appendChild(badgeImg);
-            }
-            badgeImg.src = bustBadgeUrl();
-        }
-    } catch (_) {}
+	function getBadgeParent() {
+		return viewEl.parentElement || document.querySelector('.views-container');
+	}
+
+	function renderBadgeObject() {
+		try {
+			const parent = getBadgeParent();
+			if (!parent) return;
+			const existingImg = document.getElementById(BADGE_ID);
+			if (existingImg) existingImg.remove();
+			let obj = document.getElementById(BADGE_OBJECT_ID);
+			if (!obj) {
+				obj = document.createElement('object');
+				obj.id = BADGE_OBJECT_ID;
+				obj.type = 'image/svg+xml';
+				obj.style.height = '16px';
+				obj.style.verticalAlign = 'text-bottom';
+				viewEl.style.display = 'none';
+				parent.appendChild(obj);
+			}
+			obj.data = BADGE_URL;
+		} catch (_) {}
+	}
+
+	function renderBadgeImage() {
+		try {
+			const parent = getBadgeParent();
+			if (!parent) return;
+			if (document.getElementById(BADGE_ID) || document.getElementById(BADGE_OBJECT_ID)) return;
+			const badgeImg = document.createElement('img');
+			badgeImg.id = BADGE_ID;
+			badgeImg.alt = 'visitors';
+			badgeImg.decoding = 'async';
+			badgeImg.loading = 'lazy';
+			badgeImg.style.height = '16px';
+			badgeImg.style.verticalAlign = 'text-bottom';
+			badgeImg.addEventListener('error', () => { renderBadgeObject(); });
+			viewEl.style.display = 'none';
+			parent.appendChild(badgeImg);
+			badgeImg.src = BADGE_URL; // no cache-bust initially, maximize compatibility
+		} catch (_) {}
+	}
+
+	function refreshBadge() {
+		try {
+			const img = document.getElementById(BADGE_ID);
+			if (img) { img.src = bustBadgeUrl(); return; }
+			const obj = document.getElementById(BADGE_OBJECT_ID);
+			if (obj) { obj.data = bustBadgeUrl(); }
+		} catch (_) {}
+	}
+
+	// Insert badge now
+	renderBadgeImage();
 
     function shouldIncrementToday() {
         try {
@@ -59,14 +95,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (delays[i] > 0) await new Promise(r => setTimeout(r, delays[i]));
             try {
                 const res = await fetch(HIT_URL, { method: 'GET', cache: 'no-store' });
-                if (res.ok) {
-                    markIncrementedNow();
-                    try {
-                        const badgeImg = document.getElementById(BADGE_ID);
-                        if (badgeImg) badgeImg.src = bustBadgeUrl();
-                    } catch (_) {}
-                    return true;
-                }
+				if (res.ok) {
+					markIncrementedNow();
+					refreshBadge();
+					return true;
+				}
             } catch (_) {}
         }
         return false;
