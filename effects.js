@@ -17,6 +17,8 @@ function removeOverlay() {
     overlay.style.opacity = '0';
     userpage.style.display = 'flex';
     audio.play();
+    // Notify other scripts that the user explicitly entered the site
+    try { window.dispatchEvent(new Event('user-enter')); } catch (e) {}
 
     setTimeout(function() { 
         overlay.style.display = 'none';

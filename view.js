@@ -85,12 +85,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 	}
 
 	const enterBtn = document.querySelector('#overlay .overlaybtn');
-	if (enterBtn) {
-		enterBtn.addEventListener('click', () => {
-			// Only count when they click to enter
-			recordView();
-		}, { once: true });
-	}
+	const attach = () => { try { enterBtn && enterBtn.addEventListener('click', recordView, { once: true }); } catch (_) {} };
+	attach();
+	// Also listen for a cross-script event in case the overlay button changes
+	window.addEventListener('user-enter', () => { recordView(); }, { once: true });
 
 	// Do not increment on load
 });
